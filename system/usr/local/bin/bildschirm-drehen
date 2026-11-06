@@ -1,0 +1,4 @@
+#!/bin/sh
+# Schaltet das Display des Surface 3 zwischen Quer- und Hochformat um (Lagesensor liefert keine Werte)
+akt=$(kscreen-doctor -o 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | awk '/Rotation:/{print $2; exit}')
+if [ "$akt" = "1" ]; then kscreen-doctor output.DSI-1.rotation.right; else kscreen-doctor output.DSI-1.rotation.normal; fi

@@ -1,0 +1,2 @@
+# Surface 3: Sensor-Hub meldet mit voreingestellter Hysterese (0.1) keine Lageaenderungen -> 0 setzen
+ACTION=="add", SUBSYSTEM=="iio", ATTR{name}=="accel_3d", ATTR{in_accel_hysteresis}="0"

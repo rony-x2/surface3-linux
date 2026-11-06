@@ -1,0 +1,17 @@
+Kernel: 6.12.115+deb13.1-amd64  05.11.2026 15:21
+Startup finished in 7.802s (firmware) + 20.431s (loader) + 3.733s (kernel) + 6.283s (userspace) = 38.250s 
+RAM benutzt (MB): 1732
+Module geladen: 163
+-- cyclictest 30 s (Latenz in us, min/avg/max je Kern)
+  T0 Min 7 Avg 8 Max 186
+  T1 Min 7 Avg 8 Max 157
+  T2 Min 7 Avg 8 Max 1622
+  T3 Min 8 Avg 8 Max 133
+-- hackbench (Sekunden, kleiner = besser)
+  3.176
+  3.162
+  3.160
+-- sysbench cpu 4 Threads (Ereignisse/s)
+  2090.03
+-- sysbench memory (MiB/s)
+  (4600.05 MiB/sec)

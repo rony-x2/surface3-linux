@@ -1,0 +1,2 @@
+# Surface 3: Energiesparen (Runtime-PM) fuer Akku-I2C, Touchscreen-SPI und LPSS-DMA aus (Versuch gegen haengende Busse)
+ACTION=="add|bind", SUBSYSTEM=="platform", KERNEL=="808622C1:00|8086228E:00|INTL9C60:00|INTL9C60:01", ATTR{power/control}="on"

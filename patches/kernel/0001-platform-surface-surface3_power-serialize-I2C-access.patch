@@ -1,0 +1,150 @@
+From 2f187ee1513d6dd3528e651926955e711f783bd5 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Dennis=20Deutschk=C3=A4mer?= <dennis@deutschkaemer.info>
+Date: Thu, 5 Nov 2026 23:28:27 +0000
+Subject: [PATCH] platform/surface: surface3_power: serialize I2C access and
+ keep polling after errors
+
+The MSHW0011 driver accesses the battery/charger controller from two
+contexts: the ACPI GenericSerialBus operation region handler (used by
+_PSR, _BST and _BIX) and the mshw0011_adp polling kthread. ACPICA drops
+the interpreter lock while it calls an operation region handler, so
+evaluations of these methods from different tasks (notification
+handling, power_supply property reads from userspace) and the polling
+thread can run concurrently. The BST and BIX commands each consist of
+several SMBus transfers, which can then interleave on the bus.
+
+In addition, the polling thread exits on the first I2C error and is
+never restarted. After a single transient failure, AC adapter plug and
+unplug events are no longer reported until the driver is reloaded.
+
+Finally, the operation region handler stores the negative errno value
+returned by mshw0011_bix() and mshw0011_bst() in an acpi_status and
+hands it to ACPICA, which then logs "Unknown exception code 0xFFFFFF92"
+instead of a proper error.
+
+Observed on a Surface 3 (Atom x7-Z8700): after an AC adapter change the
+log shows "i2c_designware 808622C1:00: controller timed out" followed by
+_BST evaluation failures, the polling thread is gone and
+/sys/class/power_supply/ADP1/online returns -ENODEV.
+
+Fix this by:
+ - adding a mutex that serializes every PSR, BST and BIX command
+   sequence. The lock is not held across the _DSM notifications issued
+   from the polling thread, as their AML may access the operation region
+   and re-enter the handler.
+ - logging polling errors (rate limited) instead of terminating the
+   thread.
+ - returning AE_ERROR to ACPICA when a BST or BIX command fails.
+
+Fixes: b1f81b496b0d ("platform/x86: surface3_power: MSHW0011 rev-eng implementation")
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01ADBQkhyvYUjZVtV8gMxcbo
+---
+ drivers/platform/surface/surface3_power.c | 26 ++++++++++++++++++++---
+ 1 file changed, 23 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/platform/surface/surface3_power.c b/drivers/platform/surface/surface3_power.c
+index 94fdddc7f207..69cd216f2b05 100644
+--- a/drivers/platform/surface/surface3_power.c
++++ b/drivers/platform/surface/surface3_power.c
+@@ -37,6 +37,7 @@
+ #include <linux/i2c.h>
+ #include <linux/kernel.h>
+ #include <linux/kthread.h>
++#include <linux/mutex.h>
+ #include <linux/slab.h>
+ #include <linux/types.h>
+ #include <linux/uuid.h>
+@@ -50,6 +51,8 @@ struct mshw0011_data {
+ 	struct i2c_client	*bat0;
+ 	unsigned short		notify_mask;
+ 	struct task_struct	*poll_task;
++	/* serialises I2C command sequences to the MSHW0011 controller */
++	struct mutex		lock;
+ 	bool			kthread_running;
+ 
+ 	bool			charging;
+@@ -314,7 +317,9 @@ static int mshw0011_isr(struct mshw0011_data *cdata)
+ 	int ret;
+ 	bool status, bat_status;
+ 
++	mutex_lock(&cdata->lock);
+ 	ret = mshw0011_adp_psr(cdata);
++	mutex_unlock(&cdata->lock);
+ 	if (ret < 0)
+ 		return ret;
+ 
+@@ -325,7 +330,9 @@ static int mshw0011_isr(struct mshw0011_data *cdata)
+ 
+ 	cdata->charging = status;
+ 
++	mutex_lock(&cdata->lock);
+ 	ret = mshw0011_bst(cdata, &bst);
++	mutex_unlock(&cdata->lock);
+ 	if (ret < 0)
+ 		return ret;
+ 
+@@ -336,7 +343,9 @@ static int mshw0011_isr(struct mshw0011_data *cdata)
+ 
+ 	cdata->bat_charging = bat_status;
+ 
++	mutex_lock(&cdata->lock);
+ 	ret = mshw0011_bix(cdata, &bix);
++	mutex_unlock(&cdata->lock);
+ 	if (ret < 0)
+ 		return ret;
+ 
+@@ -363,7 +372,8 @@ static int mshw0011_poll_task(void *data)
+ 		try_to_freeze();
+ 		ret = mshw0011_isr(data);
+ 		if (ret)
+-			break;
++			dev_warn_ratelimited(&cdata->adp1->dev,
++					     "status poll failed: %d\n", ret);
+ 	}
+ 
+ 	cdata->kthread_running = false;
+@@ -402,7 +412,9 @@ mshw0011_space_handler(u32 function, acpi_physical_address command,
+ 
+ 	if (gsb->cmd.arg0 == MSHW0011_CMD_DEST_ADP1 &&
+ 	    gsb->cmd.arg1 == MSHW0011_CMD_ADP1_PSR) {
++		mutex_lock(&cdata->lock);
+ 		status = mshw0011_adp_psr(cdata);
++		mutex_unlock(&cdata->lock);
+ 		if (status >= 0) {
+ 			ret = AE_OK;
+ 			goto out;
+@@ -421,13 +433,17 @@ mshw0011_space_handler(u32 function, acpi_physical_address command,
+ 	case MSHW0011_CMD_BAT0_STA:
+ 		break;
+ 	case MSHW0011_CMD_BAT0_BIX:
+-		ret = mshw0011_bix(cdata, &gsb->bix);
++		mutex_lock(&cdata->lock);
++		ret = mshw0011_bix(cdata, &gsb->bix) ? AE_ERROR : AE_OK;
++		mutex_unlock(&cdata->lock);
+ 		break;
+ 	case MSHW0011_CMD_BAT0_BTP:
+ 		cdata->trip_point = gsb->cmd.arg2;
+ 		break;
+ 	case MSHW0011_CMD_BAT0_BST:
+-		ret = mshw0011_bst(cdata, &gsb->bst);
++		mutex_lock(&cdata->lock);
++		ret = mshw0011_bst(cdata, &gsb->bst) ? AE_ERROR : AE_OK;
++		mutex_unlock(&cdata->lock);
+ 		break;
+ 	default:
+ 		dev_info(&cdata->bat0->dev, "command(0x%02x) is not supported.\n", gsb->cmd.arg1);
+@@ -517,6 +533,10 @@ static int mshw0011_probe(struct i2c_client *client)
+ 	data->adp1 = client;
+ 	i2c_set_clientdata(client, data);
+ 
++	error = devm_mutex_init(dev, &data->lock);
++	if (error)
++		return error;
++
+ 	memset(&board_info, 0, sizeof(board_info));
+ 	strscpy(board_info.type, "MSHW0011-bat0", I2C_NAME_SIZE);
+ 
+-- 
+2.53.0
+

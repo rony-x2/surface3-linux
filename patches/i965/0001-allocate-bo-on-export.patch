@@ -1,0 +1,58 @@
+Description: Allocate the surface bo in vaExportSurfaceHandle() if needed
+ The i965 driver allocates the buffer object of a surface lazily, on the
+ first render or decode. Clients such as Chromium export a surface with
+ vaExportSurfaceHandle() right after vaCreateSurfaces(), before anything
+ has been rendered into it. The driver then returned
+ VA_STATUS_ERROR_INVALID_SURFACE ("vaExportSurfaceHandle failed, VA error:
+ invalid VASurfaceID") and Chromium silently fell back to software
+ decoding.
+ .
+ Allocate the bo on export, using the format the surface was created for
+ (NV12 for YUV420, P010 for YUV420_10BPP), and fall back to the existing
+ guess otherwise.
+ .
+ Tested on a Microsoft Surface 3 (Atom x7-Z8700, Cherry Trail) with
+ Chromium 156 on Wayland: H.264 1080p60 from YouTube is decoded in
+ hardware afterwards.
+Author: Dennis Deutschkämer <dennis@deutschkaemer.info>
+Forwarded: no
+Last-Update: 2026-11-06
+---
+--- intel-vaapi-driver-2.4.1+dfsg1.orig/src/i965_drv_video.c
++++ intel-vaapi-driver-2.4.1+dfsg1/src/i965_drv_video.c
+@@ -6802,9 +6802,34 @@ i965_ExportSurfaceHandle(VADriverContext
+     int composite_object =
+         flags & VA_EXPORT_SURFACE_COMPOSED_LAYERS;
+ 
+-    if (!obj_surface || !obj_surface->bo)
++    if (!obj_surface)
+         return VA_STATUS_ERROR_INVALID_SURFACE;
+ 
++    /*
++     * Surfaces are allocated lazily. Clients such as Chromium export a
++     * surface right after vaCreateSurfaces(), before anything has been
++     * rendered into it, so allocate the backing bo here if needed.
++     */
++    if (!obj_surface->bo) {
++        unsigned int is_tiled = 1;
++        unsigned int fourcc = 0;
++
++        if (obj_surface->expected_format & VA_RT_FORMAT_YUV420_10BPP)
++            fourcc = VA_FOURCC_P010;
++        else if (obj_surface->expected_format & VA_RT_FORMAT_YUV420)
++            fourcc = VA_FOURCC_NV12;
++        else
++            i965_guess_surface_format(ctx, surface_id, &fourcc, &is_tiled);
++
++        if (obj_surface->user_disable_tiling)
++            is_tiled = 0;
++
++        if (i965_check_alloc_surface_bo(ctx, obj_surface, is_tiled, fourcc,
++                                        get_sampling_from_fourcc(fourcc)) !=
++            VA_STATUS_SUCCESS || !obj_surface->bo)
++            return VA_STATUS_ERROR_INVALID_SURFACE;
++    }
++
+     if (mem_type != VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2) {
+         i965_log_info(ctx, "vaExportSurfaceHandle: memory type %08x "
+                       "is not supported.\n", mem_type);

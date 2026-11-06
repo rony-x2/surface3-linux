@@ -1,0 +1,14 @@
+#!/bin/bash
+# Protokolliert den ersten Fehler je Bus mit Lastbild nach /root/lpss-vorfall.log
+declare -A gesehen
+journalctl -k -f -n0 -o short-monotonic | while read -r z; do
+  case "$z" in
+    *"808622C1:00: controller timed out"*) b=i2c-akku;;
+    *"SPI transfer timed out"*) b=spi-touch;;
+    *) continue;;
+  esac
+  [ -n "${gesehen[$b]}" ] && continue; gesehen[$b]=1
+  { echo "=== $(date '+%F %T') $b: $z"; uptime; cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq 2>/dev/null | tr '\n' ' '; echo
+    for t in /sys/class/thermal/thermal_zone*/temp; do echo -n "$(cat ${t%/temp}/type)=$(( $(cat $t)/1000 )) "; done; echo
+    top -b -n1 -o %CPU | sed -n 7,14p; grep -e 808622C1:00 -e 8086228E:00 -e MSHW /proc/interrupts; } >> /root/lpss-vorfall.log 2>&1
+done

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Bildschirm drehen
+Comment=Zwischen Quer- und Hochformat umschalten
+Exec=/usr/local/bin/bildschirm-drehen
+Icon=preferences-desktop-display-randr
+Categories=Settings;

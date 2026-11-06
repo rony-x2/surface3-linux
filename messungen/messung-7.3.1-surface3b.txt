@@ -1,0 +1,17 @@
+Kernel: 7.3.1-surface3b  05.11.2026 20:28
+Startup finished in 7.808s (firmware) + 17.971s (loader) + 3.220s (kernel) + 6.442s (userspace) = 35.442s 
+RAM benutzt (MB): 1162
+Module geladen: 150
+-- cyclictest 30 s (Latenz in us, min/avg/max je Kern)
+  T0 Min 7 Avg 8 Max 85
+  T1 Min 7 Avg 8 Max 143
+  T2 Min 7 Avg 9 Max 76
+  T3 Min 7 Avg 9 Max 92
+-- hackbench (Sekunden, kleiner = besser)
+  3.173
+  3.184
+  3.058
+-- sysbench cpu 4 Threads (Ereignisse/s)
+  2052.58
+-- sysbench memory (MiB/s)
+  (4448.53 MiB/sec)

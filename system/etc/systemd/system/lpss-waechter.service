@@ -1,0 +1,7 @@
+[Unit]
+Description=Protokoll bei haengendem I2C-/SPI-Bus (Surface 3)
+[Service]
+ExecStart=/usr/local/bin/lpss-waechter
+Restart=always
+[Install]
+WantedBy=multi-user.target

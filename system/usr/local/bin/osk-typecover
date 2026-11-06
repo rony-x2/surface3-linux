@@ -1,0 +1,9 @@
+#!/bin/sh
+# Bildschirmtastatur abhaengig vom Type Cover: angesteckt -> aus (mode 0), abgenommen -> automatisch (mode 1)
+if grep -q 'Surface Type Cover Keyboard' /proc/bus/input/devices; then m=0; else m=1; fi
+setze() { busctl --user set-property org.kde.KWin /VirtualKeyboard org.kde.kwin.VirtualKeyboard mode i $m 2>/dev/null; }
+if [ "$(id -u)" -ne 0 ]; then setze; exit 0; fi
+for u in $(loginctl list-users --no-legend | awk '$1>=1000{print $1}'); do
+  [ -S /run/user/$u/bus ] && runuser -u "$(id -nu $u)" -- env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$u/bus sh -c "busctl --user set-property org.kde.KWin /VirtualKeyboard org.kde.kwin.VirtualKeyboard mode i $m" 2>/dev/null
+done
+logger -t osk-typecover "Type Cover $( [ $m = 0 ] && echo angesteckt || echo ab ), Bildschirmtastatur-Modus $m"

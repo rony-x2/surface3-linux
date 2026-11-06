@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Bildschirmtastatur je nach Type Cover
+Exec=/usr/local/bin/osk-typecover
+NoDisplay=true
+X-KDE-autostart-phase=2
