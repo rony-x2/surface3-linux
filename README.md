@@ -64,7 +64,7 @@ Custom builds: linux-surface patches, `PREEMPT`, `HZ_1000`, `-march=silvermont`.
 | `einrichten.sh` | applies everything (packages, system files, kernel parameters, user settings); `--i965` also builds the patched driver |
 | `patches/` | kernel patch (`surface3_power`) and i965 patch |
 | `system/` | files in their target layout (`/etc`, `/usr`) |
-| `kernel/` | build scripts for the custom kernel (7.3.1 and 6.18.60 with linux-surface) and for bisecting |
+| `kernel/` | build scripts for the custom kernel (7.3.3, 7.3.1 and 6.18.60 with linux-surface) and for bisecting |
 | `skripte/` | load tests (`i2ctest.sh`, `lasttest.sh`), benchmark, upgrade to Debian testing, base Plasma install |
 | `messungen/` | benchmark results |
 
@@ -80,6 +80,8 @@ sudo reboot
 ```
 
 The custom kernel is built separately with the scripts in `kernel/`. They expect a working directory `~/kernelbau` containing the kernel source and the [linux-surface](https://github.com/linux-surface/linux-surface) repository. The Debian packages are built on a faster machine and installed on the Surface with `dpkg -i`.
+
+Current kernel: **7.3.3-surface3b** (built and tested on 2026-11-08 with `kernel/bau733.sh`; the linux-surface 7.3 patches and the `surface3_power` patch apply unchanged). For a newer 7.3.x release, copy `bau733.sh` and replace the version number. Keep the previous kernel installed as a fallback and point `GRUB_DEFAULT` at the new entry by its ID.
 
 ## License
 
